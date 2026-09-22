@@ -161,6 +161,15 @@ class FloatService : Service() {
     private lateinit var aimController: AimController
     private lateinit var triggerController: TriggerController
     private lateinit var inferenceManager: InferenceManager
+
+    // ==== dual-aim remote switch ====
+    fun enableRemote(host: String, port: Int = team.maodie.aimbot.remote.RemoteProtocol.DEFAULT_PORT) {
+        inferenceManager.switchToRemote(host, port)
+    }
+
+    fun disableRemote() {
+        inferenceManager.switchToLocal()
+    }
     private lateinit var overlayManager: OverlayManager
 
     override fun onCreate() {
@@ -1273,6 +1282,7 @@ class FloatService : Service() {
         mediaProjection?.stop()
         cleanupViews()
         try { stopForeground(true) } catch (_: Exception) {}
+        try { inferenceManager.switchToLocal() } catch (e: Exception) { }
         super.onDestroy()
     }
 
