@@ -1,5 +1,9 @@
 package team.maodie.aimbot.manager
 import team.maodie.aimbot.model.DetectionInfo
+import team.maodie.aimbot.remote.InferenceSource
+import team.maodie.aimbot.remote.LocalInferenceSource
+import team.maodie.aimbot.remote.RemoteInferenceSource
+import team.maodie.aimbot.remote.RemoteProtocol
 
 import android.graphics.Bitmap
 import android.graphics.RectF
@@ -43,6 +47,21 @@ class InferenceManager(
     // Detection buffer
     private val detectionBuffer = Array(20) { DetectionInfo(RectF(), -1, "") }
     var lastDetections: List<DetectionInfo> = emptyList()
+
+    // ==== dual-aim remote ====
+    @Volatile
+    var inferenceSource: InferenceSource = LocalInferenceSource()
+
+    fun switchToRemote(host: String, port: Int = RemoteProtocol.DEFAULT_PORT) {
+        val rs = RemoteInferenceSource(host, port)
+        inferenceSource = rs
+        rs.start()
+    }
+
+    fun switchToLocal() {
+        inferenceSource.stop()
+        inferenceSource = LocalInferenceSource()
+    }
     var centerX = 0f
     var centerY = 0f
     var cachedRange = 0f
@@ -192,6 +211,21 @@ class InferenceManager(
                             }
                         } catch (_: Exception) {}
                     }
+                // ---- remote mode branch ----
+                if (inferenceSource.isPush) {
+                    val rd = inferenceSource.pollDetections(captureW, captureH)
+                    if (rd != null) {
+                        lastDetections = rd
+                        mainHandler.post { overlayCanvasView()?.updateDetections(rd) }
+                        if (rd.isNotEmpty()) {
+                            val ad = if (aimController.aimClasses.isEmpty()) rd
+                                else rd.filter { it.classId in aimController.aimClasses }
+                            if (ad.isNotEmpty()) aimController.aim(ad)
+                            triggerController.onDetections(rd)
+                        }
+                        continue
+                    }
+                }
                     hasDetects.set(false)
                     val plane = image.planes[0]
                     val buffer = plane.buffer
@@ -385,6 +419,7 @@ class InferenceManager(
     }
 
     fun cleanup() {
+        try { inferenceSource.stop() } catch (e: Exception) { }
         if (mediaRecorder != null) toggleRecording(false)
         inferRunning.set(false)
         executor.shutdown()
