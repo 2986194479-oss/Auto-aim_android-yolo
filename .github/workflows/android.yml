@@ -26,11 +26,10 @@ jobs:
             -storepass aimbot123456 -keypass aimbot123456 \
             -dname "CN=dual-aim, OU=dev, O=dev, L=city, S=state, C=CN"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
       - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
