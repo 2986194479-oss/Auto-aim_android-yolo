@@ -211,21 +211,39 @@ class InferenceManager(
                             }
                         } catch (_: Exception) {}
                     }
-                // ---- remote mode branch ----
-                if (inferenceSource.isPush) {
-                    val rd = inferenceSource.pollDetections(captureW, captureH)
-                    if (rd != null) {
-                        lastDetections = rd
-                        mainHandler.post { overlayCanvasView()?.updateDetections(rd) }
-                        if (rd.isNotEmpty()) {
-                            val ad = if (aimController.aimClasses.isEmpty()) rd
+                    // ---- dual-aim remote mode branch ----
+                    if (inferenceSource.isPush) {
+                        val rd = inferenceSource.pollDetections(captureW, captureH)
+                        if (rd != null) {
+                            lastDetections = rd
+                            hasDetects.set(rd.isNotEmpty())
+                            mainHandler.post { overlayCanvasView()?.updateDetections(rd) }
+                            val holdToAimActive = if (aimController.aimHoldEnabled) service.touchService.isFingerInTriggerZone() ?: false else true
+                            val aimDets = if (aimController.aimClasses.isEmpty()) rd
                                 else rd.filter { it.classId in aimController.aimClasses }
-                            if (ad.isNotEmpty()) aimController.aim(ad)
-                            triggerController.onDetections(rd)
+                            if (service.aimbotOn.get() && aimDets.isNotEmpty() && holdToAimActive) {
+                                val target = aimController.selectTarget(aimDets, centerX, centerY)
+                                if (target != null) {
+                                    val tcx = target.rect.centerX()
+                                    val tcy = target.rect.centerY()
+                                    var boxH = 0f
+                                    var minD = Float.MAX_VALUE
+                                    for (det in aimDets) {
+                                        val r = det.rect
+                                        val d = (r.centerX() - tcx).let { it * it } + (r.centerY() - tcy).let { it * it }
+                                        if (d < minD) { minD = d; boxH = r.height() }
+                                    }
+                                    val classOffset = aimController.classAimOffsets[target.classId] ?: aimController.aimOffsetYRatio
+                                    val classBoxRatio = aimController.classBoxAimRatios[target.classId] ?: aimController.boxAimRatio
+                                    val aimY = (tcy - boxH * 0.5f) + boxH * (1f - classBoxRatio) - boxH * classOffset
+                                    aimController.executeAiming(tcx, aimY, centerX, centerY)
+                                }
+                            }
+                            if (aimDets.isNotEmpty()) {
+                                triggerController.processTrigger(rd, centerX, centerY, true)
+                            }
                         }
-                        continue
                     }
-                }
                     hasDetects.set(false)
                     val plane = image.planes[0]
                     val buffer = plane.buffer
