@@ -1,0 +1,40 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Generate release.jks
+        working-directory: app
+        run: |
+          keytool -genkeypair -v -keystore release.jks \
+            -alias aimbot -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass aimbot123456 -keypass aimbot123456 \
+            -dname "CN=dual-aim, OU=dev, O=dev, L=city, S=state, C=CN"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dual-aim-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
